@@ -204,7 +204,7 @@ EXPORT_SYMBOL_GPL(vhost_poll_init);
  * keep a reference to a file until after vhost_poll_stop is called. */
 int vhost_poll_start(struct vhost_poll *poll, struct file *file)
 {
-	unsigned long mask;
+	__poll_t mask;
 	int ret = 0;
 
 	if (poll->wqh)
@@ -212,7 +212,7 @@ int vhost_poll_start(struct vhost_poll *poll, struct file *file)
 
 	mask = file->f_op->poll(file, &poll->table);
 	if (mask)
-		vhost_poll_wakeup(&poll->wait, 0, 0, (void *)mask);
+		vhost_poll_wakeup(&poll->wait, 0, 0, (void *)(uintptr_t)mask);
 	if (mask & POLLERR) {
 		vhost_poll_stop(poll);
 		ret = -EINVAL;
