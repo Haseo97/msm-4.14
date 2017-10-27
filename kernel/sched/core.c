@@ -27,6 +27,7 @@
 #include <linux/scs.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/sched/isolation.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
 
