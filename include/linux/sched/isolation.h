@@ -7,32 +7,19 @@
 
 #ifdef CONFIG_NO_HZ_FULL
 extern cpumask_var_t housekeeping_mask;
-
-static inline int housekeeping_any_cpu(void)
-{
-        cpumask_t available;
-        int cpu;
-
-        cpumask_andnot(&available, cpu_online_mask, cpu_isolated_mask);
-        cpu = cpumask_any(&available);
-        if (cpu >= nr_cpu_ids)
-                cpu = smp_processor_id();
-
-        return cpu;
-}
-
 extern void __init housekeeping_init(void);
-
 #else
-
-static inline int housekeeping_any_cpu(void)
-{
-	return smp_processor_id();
-}
-
 static inline void housekeeping_init(void) { }
 #endif /* CONFIG_NO_HZ_FULL */
 
+static inline int housekeeping_any_cpu(void)
+{
+#ifdef CONFIG_NO_HZ_FULL
+	if (tick_nohz_full_enabled())
+		return cpumask_any_and(housekeeping_mask, cpu_online_mask);
+#endif
+	return smp_processor_id();
+}
 
 static inline const struct cpumask *housekeeping_cpumask(void)
 {
@@ -49,7 +36,7 @@ static inline bool is_housekeeping_cpu(int cpu)
 	if (tick_nohz_full_enabled())
 		return cpumask_test_cpu(cpu, housekeeping_mask);
 #endif
-	return !cpu_isolated(cpu);
+	return true;
 }
 
 static inline void housekeeping_affine(struct task_struct *t)
