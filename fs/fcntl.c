@@ -758,7 +758,7 @@ static void send_sigio_to_task(struct task_struct *p,
 			if (reason - POLL_IN >= NSIGPOLL)
 				si.si_band  = ~0L;
 			else
-				si.si_band = band_table[reason - POLL_IN];
+				si.si_band = mangle_poll(band_table[reason - POLL_IN]);
 			si.si_fd    = fd;
 			if (!do_send_sig_info(signum, &si, p, group))
 				break;
@@ -774,7 +774,7 @@ void send_sigio(struct fown_struct *fown, int fd, int band)
 	enum pid_type type;
 	struct pid *pid;
 	int group = 1;
-	
+
 	read_lock(&fown->lock);
 
 	type = fown->pid_type;
