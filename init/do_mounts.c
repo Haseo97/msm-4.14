@@ -368,7 +368,7 @@ static int __init do_mount_root(char *name, char *fs, int flags, void *data)
 
 	place_marker("M - DRIVER F/S Init");
 
-	err = sys_mount((char __user *)name, (char __user *)"/root",
+	err = ksys_mount((char __user *)name, (char __user *)"/root",
 			(char __user *)fs, (unsigned long)flags,
 						(void __user *)data);
 	if (err)
@@ -610,7 +610,7 @@ void __init prepare_namespace(void)
 	mount_root();
 out:
 	devtmpfs_mount("dev");
-	sys_mount(".", "/", NULL, MS_MOVE, NULL);
+	ksys_mount(".", "/", NULL, MS_MOVE, NULL);
 	sys_chroot(".");
 }
 
