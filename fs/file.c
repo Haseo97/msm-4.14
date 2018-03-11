@@ -874,7 +874,7 @@ out_unlock:
 	return err;
 }
 
-SYSCALL_DEFINE3(dup3, unsigned int, oldfd, unsigned int, newfd, int, flags)
+static int ksys_dup3(unsigned int oldfd, unsigned int newfd, int flags)
 {
 	int err = -EBADF;
 	struct file *file;
@@ -908,6 +908,11 @@ out_unlock:
 	return err;
 }
 
+SYSCALL_DEFINE3(dup3, unsigned int, oldfd, unsigned int, newfd, int, flags)
+{
+	return ksys_dup3(oldfd, newfd, flags);
+}
+
 SYSCALL_DEFINE2(dup2, unsigned int, oldfd, unsigned int, newfd)
 {
 	if (unlikely(newfd == oldfd)) { /* corner case */
@@ -920,10 +925,10 @@ SYSCALL_DEFINE2(dup2, unsigned int, oldfd, unsigned int, newfd)
 		rcu_read_unlock();
 		return retval;
 	}
-	return sys_dup3(oldfd, newfd, 0);
+	return ksys_dup3(oldfd, newfd, 0);
 }
 
-SYSCALL_DEFINE1(dup, unsigned int, fildes)
+int ksys_dup(unsigned int fildes)
 {
 	int ret = -EBADF;
 	struct file *file = fget_raw(fildes);
@@ -936,6 +941,11 @@ SYSCALL_DEFINE1(dup, unsigned int, fildes)
 			fput(file);
 	}
 	return ret;
+}
+
+SYSCALL_DEFINE1(dup, unsigned int, fildes)
+{
+	return ksys_dup(fildes);
 }
 
 int f_dupfd(unsigned int from, struct file *file, unsigned flags)
