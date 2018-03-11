@@ -57,6 +57,8 @@ extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
 			   const char *, unsigned int, struct path *);
 long do_mkdirat(int dfd, const char __user *pathname, umode_t mode);
 long do_rmdir(int dfd, const char __user *pathname);
+long do_symlinkat(const char __user *oldname, int newdfd,
+		  const char __user *newname);
 
 /*
  * namespace.c
