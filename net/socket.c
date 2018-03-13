@@ -1318,7 +1318,7 @@ int sock_create_kern(struct net *net, int family, int type, int protocol, struct
 }
 EXPORT_SYMBOL(sock_create_kern);
 
-SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
+int __sys_socket(int family, int type, int protocol)
 {
 	int retval;
 	struct socket *sock;
@@ -1356,6 +1356,11 @@ out:
 out_release:
 	sock_release(sock);
 	return retval;
+}
+
+SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
+{
+	return __sys_socket(family, type, protocol);
 }
 
 /*
@@ -2489,7 +2494,7 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
 
 	switch (call) {
 	case SYS_SOCKET:
-		err = sys_socket(a0, a1, a[2]);
+		err = __sys_socket(a0, a1, a[2]);
 		break;
 	case SYS_BIND:
 		err = sys_bind(a0, (struct sockaddr __user *)a1, a[2]);
