@@ -1512,7 +1512,7 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
  *	ready for listening.
  */
 
-SYSCALL_DEFINE2(listen, int, fd, int, backlog)
+int __sys_listen(int fd, int backlog)
 {
 	struct socket *sock;
 	int err, fput_needed;
@@ -1533,6 +1533,11 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 			sockev_notify(SOCKEV_LISTEN, sock);
 	}
 	return err;
+}
+
+SYSCALL_DEFINE2(listen, int, fd, int, backlog)
+{
+	return __sys_listen(fd, backlog);
 }
 
 /*
@@ -2513,7 +2518,7 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
 		err = __sys_connect(a0, (struct sockaddr __user *)a1, a[2]);
 		break;
 	case SYS_LISTEN:
-		err = sys_listen(a0, a1);
+		err = __sys_listen(a0, a1);
 		break;
 	case SYS_ACCEPT:
 		err = __sys_accept4(a0, (struct sockaddr __user *)a1,
