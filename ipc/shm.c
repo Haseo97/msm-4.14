@@ -1054,7 +1054,7 @@ out_unlock1:
 	return err;
 }
 
-SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, struct shmid_ds __user *, buf)
+long ksys_shmctl(int shmid, int cmd, struct shmid_ds __user *buf)
 {
 	int err, version;
 	struct ipc_namespace *ns;
@@ -1106,6 +1106,11 @@ SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, struct shmid_ds __user *, buf)
 	default:
 		return -EINVAL;
 	}
+}
+
+SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, struct shmid_ds __user *, buf)
+{
+	return ksys_shmctl(shmid, cmd, buf);
 }
 
 #ifdef CONFIG_COMPAT
@@ -1227,7 +1232,7 @@ static int copy_compat_shmid_from_user(struct shmid64_ds *out, void __user *buf,
 	}
 }
 
-COMPAT_SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, void __user *, uptr)
+long compat_ksys_shmctl(int shmid, int cmd, void __user *uptr)
 {
 	struct ipc_namespace *ns;
 	struct shmid64_ds sem64;
@@ -1281,6 +1286,11 @@ COMPAT_SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, void __user *, uptr)
 		return -EINVAL;
 	}
 	return err;
+}
+
+COMPAT_SYSCALL_DEFINE3(shmctl, int, shmid, int, cmd, void __user *, uptr)
+{
+	return compat_ksys_shmctl(shmid, cmd, uptr);
 }
 #endif
 
