@@ -1570,7 +1570,7 @@ out_up:
 	return err;
 }
 
-SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, unsigned long, arg)
+long ksys_semctl(int semid, int semnum, int cmd, unsigned long arg)
 {
 	int version;
 	struct ipc_namespace *ns;
@@ -1624,6 +1624,11 @@ SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, unsigned long, arg)
 	}
 }
 
+SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, unsigned long, arg)
+{
+	return ksys_semctl(semid, semnum, cmd, arg);
+}
+
 #ifdef CONFIG_COMPAT
 
 struct compat_semid_ds {
@@ -1672,7 +1677,7 @@ static int copy_compat_semid_to_user(void __user *buf, struct semid64_ds *in,
 	}
 }
 
-COMPAT_SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, int, arg)
+long compat_ksys_semctl(int semid, int semnum, int cmd, int arg)
 {
 	void __user *p = compat_ptr(arg);
 	struct ipc_namespace *ns;
@@ -1715,6 +1720,11 @@ COMPAT_SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, int, arg)
 	default:
 		return -EINVAL;
 	}
+}
+
+COMPAT_SYSCALL_DEFINE4(semctl, int, semid, int, semnum, int, cmd, int, arg)
+{
+	return compat_ksys_semctl(semid, semnum, cmd, arg);
 }
 #endif
 
