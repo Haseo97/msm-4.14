@@ -530,7 +530,7 @@ out_unlock:
 	return err;
 }
 
-SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, struct msqid_ds __user *, buf)
+long ksys_msgctl(int msqid, int cmd, struct msqid_ds __user *buf)
 {
 	int version;
 	struct ipc_namespace *ns;
@@ -571,6 +571,11 @@ SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, struct msqid_ds __user *, buf)
 	default:
 		return  -EINVAL;
 	}
+}
+
+SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, struct msqid_ds __user *, buf)
+{
+	return ksys_msgctl(msqid, cmd, buf);
 }
 
 #ifdef CONFIG_COMPAT
@@ -643,7 +648,7 @@ static int copy_compat_msqid_to_user(void __user *buf, struct msqid64_ds *in,
 	}
 }
 
-COMPAT_SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, void __user *, uptr)
+long compat_ksys_msgctl(int msqid, int cmd, void __user *uptr)
 {
 	struct ipc_namespace *ns;
 	int err;
@@ -683,6 +688,11 @@ COMPAT_SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, void __user *, uptr)
 	default:
 		return -EINVAL;
 	}
+}
+
+COMPAT_SYSCALL_DEFINE3(msgctl, int, msqid, int, cmd, void __user *, uptr)
+{
+	return compat_ksys_msgctl(msqid, cmd, uptr);
 }
 #endif
 
