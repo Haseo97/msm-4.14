@@ -902,6 +902,9 @@ __SYSCALL(__NR_fork, sys_ni_syscall)
 #define __NR_syscalls (__NR_fork+1)
 
 #endif /* __ARCH_WANT_SYSCALL_DEPRECATED */
+#define __NR_io_pgetevents 292
+__SC_COMP(__NR_io_pgetevents, sys_io_pgetevents, compat_sys_io_pgetevents)
+
 
 /*
  * 32 bit systems traditionally used different

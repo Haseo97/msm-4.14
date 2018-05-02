@@ -234,6 +234,7 @@ cond_syscall(sys_perf_event_open);
 cond_syscall(sys_fanotify_init);
 cond_syscall(sys_fanotify_mark);
 cond_syscall(compat_sys_fanotify_mark);
+cond_syscall(compat_io_pgetevents);
 
 /* open by handle */
 cond_syscall(sys_name_to_handle_at);
