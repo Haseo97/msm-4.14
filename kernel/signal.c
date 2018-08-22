@@ -75,7 +75,7 @@ static inline bool sig_handler_ignored(void __user *handler, int sig)
 	       (handler == SIG_DFL && sig_kernel_ignore(sig));
 }
 
-static int sig_task_ignored(struct task_struct *t, int sig, bool force)
+static bool sig_task_ignored(struct task_struct *t, int sig, bool force)
 {
 	void __user *handler;
 
@@ -87,7 +87,7 @@ static int sig_task_ignored(struct task_struct *t, int sig, bool force)
 
 	if (unlikely(t->signal->flags & SIGNAL_UNKILLABLE) &&
 	    handler == SIG_DFL && !(force && sig_kernel_only(sig)))
-		return 1;
+		return true;
 
 	/* Only allow kernel generated signals to this kthread */
 	if (unlikely((t->flags & PF_KTHREAD) &&
