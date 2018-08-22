@@ -286,7 +286,7 @@ static inline void kernel_signal_stop(void)
 	schedule();
 }
 extern int send_sig_info(int, struct siginfo *, struct task_struct *);
-extern int force_sigsegv(int, struct task_struct *);
+extern void force_sigsegv(int sig, struct task_struct *p);
 extern int force_sig_info(int, struct siginfo *, struct task_struct *);
 extern int __kill_pgrp_info(int sig, struct siginfo *info, struct pid *pgrp);
 extern int kill_pid_info(int sig, struct siginfo *info, struct pid *pid);
