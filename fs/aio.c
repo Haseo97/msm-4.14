@@ -1490,7 +1490,7 @@ static inline ssize_t aio_rw_ret(struct kiocb *req, ssize_t ret)
 		ret = -EINTR;
 		/*FALLTHRU*/
 	default:
-		aio_complete_rw(req, ret, 0);
+		req->ki_complete(req, ret, 0);
 		return 0;
 	}
 }
