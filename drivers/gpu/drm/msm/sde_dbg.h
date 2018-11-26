@@ -433,14 +433,14 @@ static inline int sde_dbg_reg_register_base(const char *name,
 	return 0;
 }
 
-static inline int sde_dbg_reg_register_cb(const char *name, void (*cb)(void *),
-					  void *ptr)
+static inline int sde_dbg_reg_register_cb(const char *name,
+		void (*cb)(void *), void *ptr)
 {
 	return 0;
 }
 
 static inline void sde_dbg_reg_unregister_cb(const char *name,
-					     void (*cb)(void *), void *ptr)
+		void (*cb)(void *), void *ptr)
 {
 }
 
