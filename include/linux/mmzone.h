@@ -188,6 +188,7 @@ enum node_stat_item {
 	NR_WRITTEN,		/* page writings since bootup */
 	NR_INDIRECTLY_RECLAIMABLE_BYTES, /* measured in bytes */
 	NR_UNRECLAIMABLE_PAGES,
+	NR_GPU_HEAP,
 	NR_VM_NODE_STAT_ITEMS
 };
 
