@@ -219,7 +219,7 @@ static inline unsigned long kaslr_offset(void)
  * pass on to access_ok(), for instance.
  */
 #define untagged_addr(addr)	\
-	((__typeof__(addr))sign_extend64((__force u64)(addr), 55))
+	((__force __typeof__(addr))sign_extend64((__force u64)(addr), 55))
 
 /*
  * Physical vs virtual RAM address space conversion.  These are
