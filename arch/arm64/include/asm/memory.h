@@ -221,12 +221,6 @@ static inline unsigned long kaslr_offset(void)
 #define untagged_addr(addr)	\
 	((__force __typeof__(addr))sign_extend64((__force u64)(addr), 55))
 
-/*
- * Physical vs virtual RAM address space conversion.  These are
- * private definitions which should NOT be used outside memory.h
- * files.  Use virt_to_phys/phys_to_virt/__pa/__va instead.
- */
-
 
 /*
  * The linear kernel range starts in the middle of the virtual adddress
