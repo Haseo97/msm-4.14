@@ -90,7 +90,7 @@ extern const uint16_t gesture_key_array[];
 #define BOOT_UPDATE_FIRMWARE_NAME_SHENCHAO "novatek/shenchao_nt36672a_miui_f7b.bin"
 
 //---ESD Protect.---
-#define NVT_TOUCH_ESD_PROTECT 1
+#define NVT_TOUCH_ESD_PROTECT 0
 #define NVT_TOUCH_ESD_CHECK_PERIOD 1500	/* ms */
 
 #define TOUCH_STATE_WORKING    0x00
