@@ -498,6 +498,7 @@ endif
 ifneq ($(GCC_TOOLCHAIN),)
 CLANG_FLAGS	+= --gcc-toolchain=$(GCC_TOOLCHAIN)
 endif
+CLANG_FLAGS	+= -fexperimental-new-pass-manager
 CLANG_FLAGS	+= -Werror=unknown-warning-option
 KBUILD_CFLAGS	+= $(CLANG_FLAGS)
 KBUILD_AFLAGS	+= $(CLANG_FLAGS) -no-integrated-as
@@ -773,7 +774,7 @@ KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
 endif
 
 ifeq ($(ld-name),lld)
-LDFLAGS += -O3
+LDFLAGS += -O3 --lto-new-pass-manager
 endif
 
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
