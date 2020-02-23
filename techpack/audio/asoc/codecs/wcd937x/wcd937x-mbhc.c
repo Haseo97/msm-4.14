@@ -1,13 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -24,8 +16,8 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include "wcd937x-registers.h"
-#include "../wcdcal-hwdep.h"
-#include "../wcd-mbhc-v2-api.h"
+#include <asoc/wcdcal-hwdep.h>
+#include <asoc/wcd-mbhc-v2-api.h>
 #include "internal.h"
 
 #define WCD937X_ZDET_SUPPORTED          true
@@ -545,12 +537,13 @@ static void wcd937x_wcd_mbhc_calc_impedance(struct wcd_mbhc *mbhc, uint32_t *zl,
 	regmap_update_bits(wcd937x->regmap,
 			   WCD937X_ANA_MBHC_MECH, 0x01, 0x00);
 
-	/*
-	 * Disable surge protection before impedance detection.
+	/* Disable surge protection before impedance detection.
 	 * This is done to give correct value for high impedance.
 	 */
 	regmap_update_bits(wcd937x->regmap,
 			   WCD937X_HPH_SURGE_HPHLR_SURGE_EN, 0xC0, 0x00);
+	/* 1ms delay needed after disable surge protection */
+	usleep_range(1000, 1010);
 
 	/* First get impedance on Left */
 	d1 = d1_a[1];
@@ -979,7 +972,7 @@ EXPORT_SYMBOL(wcd937x_mbhc_hs_detect_exit);
  * wcd937x_mbhc_ssr_down: stop mbhc during
  * wcd937x subsystem restart
  * @mbhc: pointer to wcd937x_mbhc structure
- * @codec: handle to snd_soc_codec *
+ * @component: handle to snd_soc_component *
  */
 void wcd937x_mbhc_ssr_down(struct wcd937x_mbhc *mbhc,
 		         struct snd_soc_codec *codec)
