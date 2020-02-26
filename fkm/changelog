@@ -1,0 +1,17 @@
+- Kernel is LTO, CFI and SCS enabled.
+- RCU's update from msm-4.19.
+- Compiled only Adreno 6xx driver.
+- VLA avoidance.
+- Disabled audit.
+- Disabled unused erratums debugging.
+- Use virtually mapped shadow call stacks.
+- A few memory leaks fixes.
+- Patch SafetyNet flags.
+- Cleaned up FTS and NVT and disable ESD for NVT panel.
+- Experimental New Pass Manager on LLD.
+- Enabled RCU boost.
+- Fixed wcd937x dmesg warnings.
+- Force rcu_normal rather than rcu_expedited (ignored dts setting).
+- Imported exFAT from k5.4 and enable it.
+- Convert few drivers to new i_version API.
+- F2fs upstream from f2fs-stable.

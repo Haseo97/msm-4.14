@@ -1,0 +1,13 @@
+{
+  "kernel": {
+    "name": "Pendulum-violet",
+    "version": "666",
+    "link": "https://drive.google.com/file/d/11u9VPYle7aFEbG1ZogmmQs2rll-P4Wtl/view?usp=drivesdk",
+    "changelog_url": "https://raw.githubusercontent.com/Haseo97/msm-4.14/Violet-Q/fkm/changelog",
+    "date": "2020-2-26",
+    "sha1": "4949b66c4629876dd6623d70e0c51e7c1aef38d6"
+  },
+  "support": {
+    "link": "https://t.me/joinchat/DPdUDRGCAjoKkhtrP30hCA"
+  }
+}
