@@ -46,9 +46,13 @@ void f2fs_set_inode_flags(struct inode *inode)
 		new_fl |= S_DIRSYNC;
 	if (file_is_encrypt(inode))
 		new_fl |= S_ENCRYPTED;
+	if (file_is_verity(inode))
+		new_fl |= S_VERITY;
+	if (flags & F2FS_CASEFOLD_FL)
+		new_fl |= S_CASEFOLD;
 	inode_set_flags(inode, new_fl,
 			S_SYNC|S_APPEND|S_IMMUTABLE|S_NOATIME|S_DIRSYNC|
-			S_ENCRYPTED);
+			S_ENCRYPTED|S_VERITY|S_CASEFOLD);
 }
 
 static void __get_inode_rdev(struct inode *inode, struct f2fs_inode *ri)
@@ -611,10 +615,14 @@ int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
 			inode->i_ino == F2FS_META_INO(sbi))
 		return 0;
 
-	if (!is_inode_flag_set(inode, FI_DIRTY_INODE))
+	/*
+	 * atime could be updated without dirtying f2fs inode in lazytime mode
+	 */
+	if (f2fs_is_time_consistent(inode) &&
+		!is_inode_flag_set(inode, FI_DIRTY_INODE))
 		return 0;
 
-	if (f2fs_is_checkpoint_ready(sbi))
+	if (!f2fs_is_checkpoint_ready(sbi))
 		return -ENOSPC;
 
 	/*
@@ -673,7 +681,7 @@ retry:
 		err = f2fs_truncate(inode);
 
 	if (time_to_inject(sbi, FAULT_EVICT_INODE)) {
-		f2fs_show_injection_info(FAULT_EVICT_INODE);
+		f2fs_show_injection_info(sbi, FAULT_EVICT_INODE);
 		err = -EIO;
 	}
 
@@ -693,7 +701,8 @@ retry:
 
 	if (err) {
 		f2fs_update_inode_page(inode);
-		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
+		if (dquot_initialize_needed(inode))
+			set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
 	}
 	sb_end_intwrite(inode->i_sb);
 no_delete:
@@ -703,14 +712,11 @@ no_delete:
 	stat_dec_inline_dir(inode);
 	stat_dec_inline_inode(inode);
 
-	if (unlikely(is_inode_flag_set(inode, FI_DIRTY_INODE))) {
+	if (likely(!f2fs_cp_error(sbi) &&
+				!is_sbi_flag_set(sbi, SBI_CP_DISABLED)))
+		f2fs_bug_on(sbi, is_inode_flag_set(inode, FI_DIRTY_INODE));
+	else
 		f2fs_inode_synced(inode);
-		f2fs_info(sbi, "inconsistent dirty inode:%u entry found during eviction\n",
-			   inode->i_ino);
-		if (!is_set_ckpt_flags(sbi, CP_ERROR_FLAG) &&
-		    !is_sbi_flag_set(sbi, SBI_CP_DISABLED))
-			f2fs_bug_on(sbi, 1);
-	}
 
 	/* ino == 0, if f2fs_new_inode() was failed t*/
 	if (inode->i_ino)
@@ -736,6 +742,7 @@ no_delete:
 	}
 out_clear:
 	fscrypt_put_encryption_info(inode);
+	fsverity_cleanup_inode(inode);
 	clear_inode(inode);
 }
 
@@ -786,6 +793,7 @@ void f2fs_handle_failed_inode(struct inode *inode)
 	} else {
 		set_inode_flag(inode, FI_FREE_NID);
 	}
+
 out:
 	f2fs_unlock_op(sbi);
 

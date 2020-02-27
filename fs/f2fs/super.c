@@ -23,6 +23,7 @@
 #include <linux/f2fs_fs.h>
 #include <linux/sysfs.h>
 #include <linux/quota.h>
+#include <linux/unicode.h>
 
 #include "f2fs.h"
 #include "node.h"
@@ -221,6 +222,36 @@ void f2fs_printk(struct f2fs_sb_info *sbi, const char *fmt, ...)
 
 	va_end(args);
 }
+
+#ifdef CONFIG_UNICODE
+static const struct f2fs_sb_encodings {
+	__u16 magic;
+	char *name;
+	char *version;
+} f2fs_sb_encoding_map[] = {
+	{F2FS_ENC_UTF8_12_1, "utf8", "12.1.0"},
+};
+
+static int f2fs_sb_read_encoding(const struct f2fs_super_block *sb,
+				 const struct f2fs_sb_encodings **encoding,
+				 __u16 *flags)
+{
+	__u16 magic = le16_to_cpu(sb->s_encoding);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(f2fs_sb_encoding_map); i++)
+		if (magic == f2fs_sb_encoding_map[i].magic)
+			break;
+
+	if (i >= ARRAY_SIZE(f2fs_sb_encoding_map))
+		return -EINVAL;
+
+	*encoding = &f2fs_sb_encoding_map[i];
+	*flags = le16_to_cpu(sb->s_encoding_flags);
+
+	return 0;
+}
+#endif
 
 static inline void limit_reserve_root(struct f2fs_sb_info *sbi)
 {
@@ -798,6 +829,13 @@ static int parse_options(struct super_block *sb, char *options)
 		return -EINVAL;
 	}
 #endif
+#ifndef CONFIG_UNICODE
+	if (f2fs_sb_has_casefold(sbi)) {
+		f2fs_err(sbi,
+			"Filesystem with casefold feature cannot be mounted without CONFIG_UNICODE");
+		return -EINVAL;
+	}
+#endif
 
 	if (F2FS_IO_SIZE_BITS(sbi) && !test_opt(sbi, LFS)) {
 		f2fs_err(sbi, "Should set mode=lfs with %uKB-sized IO",
@@ -873,7 +911,21 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 static int f2fs_drop_inode(struct inode *inode)
 {
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int ret;
+
+	/*
+	 * during filesystem shutdown, if checkpoint is disabled,
+	 * drop useless meta/node dirty pages.
+	 */
+	if (unlikely(is_sbi_flag_set(sbi, SBI_CP_DISABLED))) {
+		if (inode->i_ino == F2FS_NODE_INO(sbi) ||
+			inode->i_ino == F2FS_META_INO(sbi)) {
+			trace_f2fs_drop_inode(inode, 1);
+			return 1;
+		}
+	}
+
 	/*
 	 * This is to avoid a deadlock condition like below.
 	 * writeback_single_inode(inode)
@@ -913,6 +965,8 @@ static int f2fs_drop_inode(struct inode *inode)
 		return 0;
 	}
 	ret = generic_drop_inode(inode);
+	if (!ret)
+		ret = fscrypt_drop_inode(inode);
 	trace_f2fs_drop_inode(inode, ret);
 	return ret;
 }
@@ -1022,10 +1076,22 @@ static void f2fs_umount_end(struct super_block *sb, int flags)
 	if ((flags & MNT_FORCE) || atomic_read(&sb->s_active) > 1) {
 		/* to write the latest kbytes_written */
 		if (!(sb->s_flags & MS_RDONLY)) {
+			struct f2fs_sb_info *sbi = F2FS_SB(sb);
 			struct cp_control cpc = {
 				.reason = CP_UMOUNT,
 			};
+			int locked, err;
+
+			/* only failed during mount/umount/freeze/quotactl */
+			locked = down_read_trylock(&sb->s_umount);
+			err = f2fs_quota_sync(sb, -1);
+			if (locked)
+				up_read(&sb->s_umount);
+			if (err)
+				return;
+			mutex_lock(&sbi->gc_mutex);
 			f2fs_write_checkpoint(F2FS_SB(sb), &cpc);
+			mutex_unlock(&sbi->gc_mutex);
 		}
 	}
 }
@@ -1115,6 +1181,9 @@ static void f2fs_put_super(struct super_block *sb)
 	destroy_percpu_info(sbi);
 	for (i = 0; i < NR_PAGE_TYPE; i++)
 		kvfree(sbi->write_io[i]);
+#ifdef CONFIG_UNICODE
+	utf8_unload(sbi->s_encoding);
+#endif
 	kvfree(sbi);
 }
 
@@ -1182,10 +1251,12 @@ static int f2fs_statfs_project(struct super_block *sb,
 		return PTR_ERR(dquot);
 	spin_lock(&dquot->dq_dqb_lock);
 
-	limit = min_not_zero(dquot->dq_dqb.dqb_bsoftlimit,
-					dquot->dq_dqb.dqb_bhardlimit);
-	if (limit)
-		limit >>= sb->s_blocksize_bits;
+	limit = 0;
+	if (dquot->dq_dqb.dqb_bsoftlimit)
+		limit = dquot->dq_dqb.dqb_bsoftlimit;
+	if (dquot->dq_dqb.dqb_bhardlimit &&
+			(!limit || dquot->dq_dqb.dqb_bhardlimit < limit))
+		limit = dquot->dq_dqb.dqb_bhardlimit;
 
 	if (limit && buf->f_blocks > limit) {
 		curblock = dquot->dq_dqb.dqb_curspace >> sb->s_blocksize_bits;
@@ -1195,8 +1266,12 @@ static int f2fs_statfs_project(struct super_block *sb,
 			 (buf->f_blocks - curblock) : 0;
 	}
 
-	limit = min_not_zero(dquot->dq_dqb.dqb_isoftlimit,
-					dquot->dq_dqb.dqb_ihardlimit);
+	limit = 0;
+	if (dquot->dq_dqb.dqb_isoftlimit)
+		limit = dquot->dq_dqb.dqb_isoftlimit;
+	if (dquot->dq_dqb.dqb_ihardlimit &&
+			(!limit || dquot->dq_dqb.dqb_ihardlimit < limit))
+		limit = dquot->dq_dqb.dqb_ihardlimit;
 
 	if (limit && buf->f_files > limit) {
 		buf->f_files = limit;
@@ -1242,8 +1317,7 @@ static int f2fs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	else
 		buf->f_bavail = 0;
 
-	avail_node_count = sbi->total_node_count - sbi->nquota_files -
-						F2FS_RESERVED_NODE_NUM;
+	avail_node_count = sbi->total_node_count - F2FS_RESERVED_NODE_NUM;
 
 	if (avail_node_count > user_block_count) {
 		buf->f_files = user_block_count;
@@ -1550,6 +1624,7 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	bool need_stop_gc = false;
 	bool no_extent_cache = !test_opt(sbi, EXTENT_CACHE);
 	bool disable_checkpoint = test_opt(sbi, DISABLE_CHECKPOINT);
+	bool no_io_align = !F2FS_IO_ALIGNED(sbi);
 	bool checkpoint_changed;
 #ifdef CONFIG_QUOTA
 	int i, j;
@@ -1626,6 +1701,12 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	if (no_extent_cache == !!test_opt(sbi, EXTENT_CACHE)) {
 		err = -EINVAL;
 		f2fs_warn(sbi, "switch extent_cache option is not allowed");
+		goto restore_opts;
+	}
+
+	if (no_io_align == !!F2FS_IO_ALIGNED(sbi)) {
+		err = -EINVAL;
+		f2fs_warn(sbi, "switch io_bits option is not allowed");
 		goto restore_opts;
 	}
 
@@ -2007,6 +2088,12 @@ static int f2fs_quota_on(struct super_block *sb, int type, int format_id,
 	struct inode *inode;
 	int err;
 
+	/* if quota sysfile exists, deny enabling quota with specific file */
+	if (f2fs_sb_has_quota_ino(F2FS_SB(sb))) {
+		f2fs_err(F2FS_SB(sb), "quota sysfile already exists");
+		return -EBUSY;
+	}
+
 	err = f2fs_quota_sync(sb, type);
 	if (err)
 		return err;
@@ -2026,7 +2113,7 @@ static int f2fs_quota_on(struct super_block *sb, int type, int format_id,
 	return 0;
 }
 
-static int f2fs_quota_off(struct super_block *sb, int type)
+static int __f2fs_quota_off(struct super_block *sb, int type)
 {
 	struct inode *inode = sb_dqopt(sb)->files[type];
 	int err;
@@ -2052,13 +2139,30 @@ out_put:
 	return err;
 }
 
+static int f2fs_quota_off(struct super_block *sb, int type)
+{
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	int err;
+
+	err = __f2fs_quota_off(sb, type);
+
+	/*
+	 * quotactl can shutdown journalled quota, result in inconsistence
+	 * between quota record and fs data by following updates, tag the
+	 * flag to let fsck be aware of it.
+	 */
+	if (is_journalled_quota(sbi))
+		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
+	return err;
+}
+
 void f2fs_quota_off_umount(struct super_block *sb)
 {
 	int type;
 	int err;
 
 	for (type = 0; type < MAXQUOTAS; type++) {
-		err = f2fs_quota_off(sb, type);
+		err = __f2fs_quota_off(sb, type);
 		if (err) {
 			int ret = dquot_quota_off(sb, type);
 
@@ -2451,6 +2555,12 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 	size_t crc_offset = 0;
 	__u32 crc = 0;
 
+	if (le32_to_cpu(raw_super->magic) != F2FS_SUPER_MAGIC) {
+		f2fs_info(sbi, "Magic Mismatch, valid(0x%x) - read(0x%x)",
+			  F2FS_SUPER_MAGIC, le32_to_cpu(raw_super->magic));
+		return -EINVAL;
+	}
+
 	/* Check checksum_offset and crc in superblock */
 	if (__F2FS_HAS_FEATURE(raw_super, F2FS_FEATURE_SB_CHKSUM)) {
 		crc_offset = le32_to_cpu(raw_super->checksum_offset);
@@ -2458,19 +2568,13 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 			offsetof(struct f2fs_super_block, crc)) {
 			f2fs_info(sbi, "Invalid SB checksum offset: %zu",
 				  crc_offset);
-			return 1;
+			return -EFSCORRUPTED;
 		}
 		crc = le32_to_cpu(raw_super->crc);
 		if (!f2fs_crc_valid(sbi, crc, raw_super, crc_offset)) {
 			f2fs_info(sbi, "Invalid SB checksum value: %u", crc);
-			return 1;
+			return -EFSCORRUPTED;
 		}
-	}
-
-	if (le32_to_cpu(raw_super->magic) != F2FS_SUPER_MAGIC) {
-		f2fs_info(sbi, "Magic Mismatch, valid(0x%x) - read(0x%x)",
-			  F2FS_SUPER_MAGIC, le32_to_cpu(raw_super->magic));
-		return -EINVAL;
 	}
 
 	/* Currently, support only 4KB page cache size */
@@ -2545,6 +2649,21 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 		f2fs_info(sbi, "Wrong segment_count / block_count (%u > %llu)",
 			  segment_count, le64_to_cpu(raw_super->block_count));
 		return -EFSCORRUPTED;
+	}
+
+	if (RDEV(0).path[0]) {
+		block_t dev_seg_count = le32_to_cpu(RDEV(0).total_segments);
+		int i = 1;
+
+		while (i < MAX_DEVICES && RDEV(i).path[0]) {
+			dev_seg_count += le32_to_cpu(RDEV(i).total_segments);
+			i++;
+		}
+		if (segment_count != dev_seg_count) {
+			f2fs_info(sbi, "Segment count (%u) mismatch with total segments from devices (%u)",
+					segment_count, dev_seg_count);
+			return -EFSCORRUPTED;
+		}
 	}
 
 	if (secs_per_zone > total_sections || !secs_per_zone) {
@@ -2644,8 +2763,7 @@ int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi)
 	}
 
 	valid_node_count = le32_to_cpu(ckpt->valid_node_count);
-	avail_node_count = sbi->total_node_count - sbi->nquota_files -
-						F2FS_RESERVED_NODE_NUM;
+	avail_node_count = sbi->total_node_count - F2FS_RESERVED_NODE_NUM;
 	if (valid_node_count > avail_node_count) {
 		f2fs_err(sbi, "Wrong valid_node_count: %u, avail_node_count: %u",
 			 valid_node_count, avail_node_count);
@@ -2687,7 +2805,7 @@ int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi)
 		for (j = 0; j < NR_CURSEG_DATA_TYPE; j++) {
 			if (le32_to_cpu(ckpt->cur_node_segno[i]) ==
 				le32_to_cpu(ckpt->cur_data_segno[j])) {
-				f2fs_err(sbi, "Data segment (%u) and Data segment (%u) has the same segno: %u",
+				f2fs_err(sbi, "Node segment (%u) and Data segment (%u) has the same segno: %u",
 					 i, j,
 					 le32_to_cpu(ckpt->cur_node_segno[i]));
 				return 1;
@@ -2782,6 +2900,7 @@ static void init_sb_info(struct f2fs_sb_info *sbi)
 	spin_lock_init(&sbi->dev_lock);
 
 	init_rwsem(&sbi->sb_lock);
+	init_rwsem(&sbi->pin_sem);
 }
 
 static int init_percpu_info(struct f2fs_sb_info *sbi)
@@ -2897,6 +3016,7 @@ static int read_raw_super_block(struct f2fs_sb_info *sbi,
 			f2fs_err(sbi, "Unable to read %dth superblock",
 				 block + 1);
 			err = -EIO;
+			*recovery = 1;
 			continue;
 		}
 
@@ -2906,6 +3026,7 @@ static int read_raw_super_block(struct f2fs_sb_info *sbi,
 			f2fs_err(sbi, "Can't find valid F2FS filesystem in %dth superblock",
 				 block + 1);
 			brelse(bh);
+			*recovery = 1;
 			continue;
 		}
 
@@ -2917,10 +3038,6 @@ static int read_raw_super_block(struct f2fs_sb_info *sbi,
 		}
 		brelse(bh);
 	}
-
-	/* Fail to read any one of the superblocks*/
-	if (err < 0)
-		*recovery = 1;
 
 	/* No valid superblock */
 	if (!*raw_super)
@@ -3062,6 +3179,53 @@ static int f2fs_scan_devices(struct f2fs_sb_info *sbi)
 	return 0;
 }
 
+static int f2fs_setup_casefold(struct f2fs_sb_info *sbi)
+{
+#ifdef CONFIG_UNICODE
+	if (f2fs_sb_has_casefold(sbi) && !sbi->s_encoding) {
+		const struct f2fs_sb_encodings *encoding_info;
+		struct unicode_map *encoding;
+		__u16 encoding_flags;
+
+		if (f2fs_sb_has_encrypt(sbi)) {
+			f2fs_err(sbi,
+				"Can't mount with encoding and encryption");
+			return -EINVAL;
+		}
+
+		if (f2fs_sb_read_encoding(sbi->raw_super, &encoding_info,
+					  &encoding_flags)) {
+			f2fs_err(sbi,
+				 "Encoding requested by superblock is unknown");
+			return -EINVAL;
+		}
+
+		encoding = utf8_load(encoding_info->version);
+		if (IS_ERR(encoding)) {
+			f2fs_err(sbi,
+				 "can't mount with superblock charset: %s-%s "
+				 "not supported by the kernel. flags: 0x%x.",
+				 encoding_info->name, encoding_info->version,
+				 encoding_flags);
+			return PTR_ERR(encoding);
+		}
+		f2fs_info(sbi, "Using encoding defined by superblock: "
+			 "%s-%s with flags 0x%hx", encoding_info->name,
+			 encoding_info->version?:"\b", encoding_flags);
+
+		sbi->s_encoding = encoding;
+		sbi->s_encoding_flags = encoding_flags;
+		sbi->sb->s_d_op = &f2fs_dentry_ops;
+	}
+#else
+	if (f2fs_sb_has_casefold(sbi)) {
+		f2fs_err(sbi, "Filesystem with casefold feature cannot be mounted without CONFIG_UNICODE");
+		return -EINVAL;
+	}
+#endif
+	return 0;
+}
+
 static void f2fs_tuning_parameters(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_sm_info *sm_i = SM_I(sbi);
@@ -3158,6 +3322,10 @@ try_onemore:
 				le32_to_cpu(raw_super->log_blocksize);
 	sb->s_max_links = F2FS_LINK_MAX;
 
+	err = f2fs_setup_casefold(sbi);
+	if (err)
+		goto free_options;
+
 #ifdef CONFIG_QUOTA
 	sb->dq_op = &f2fs_quota_operations;
 	sb->s_qcop = &f2fs_quotactl_ops;
@@ -3174,6 +3342,9 @@ try_onemore:
 	sb->s_op = &f2fs_sops;
 #ifdef CONFIG_FS_ENCRYPTION
 	sb->s_cop = &f2fs_cryptops;
+#endif
+#ifdef CONFIG_FS_VERITY
+	sb->s_vop = &f2fs_verityops;
 #endif
 	sb->s_xattr = f2fs_xattr_handlers;
 	sb->s_export_op = &f2fs_export_ops;
@@ -3221,6 +3392,8 @@ try_onemore:
 			sbi->write_io[i][j].bio = NULL;
 			spin_lock_init(&sbi->write_io[i][j].io_lock);
 			INIT_LIST_HEAD(&sbi->write_io[i][j].io_list);
+			INIT_LIST_HEAD(&sbi->write_io[i][j].bio_list);
+			init_rwsem(&sbi->write_io[i][j].bio_list_lock);
 		}
 	}
 
@@ -3233,7 +3406,7 @@ try_onemore:
 	if (err)
 		goto free_bio_info;
 
-	if (F2FS_IO_SIZE(sbi) > 1) {
+	if (F2FS_IO_ALIGNED(sbi)) {
 		sbi->write_io_dummy =
 			mempool_create_page_pool(2 * (F2FS_IO_SIZE(sbi) - 1), 0);
 		if (!sbi->write_io_dummy) {
@@ -3507,6 +3680,10 @@ free_percpu:
 free_bio_info:
 	for (i = 0; i < NR_PAGE_TYPE; i++)
 		kvfree(sbi->write_io[i]);
+
+#ifdef CONFIG_UNICODE
+	utf8_unload(sbi->s_encoding);
+#endif
 free_options:
 #ifdef CONFIG_QUOTA
 	for (i = 0; i < MAXQUOTAS; i++)
@@ -3627,8 +3804,13 @@ static int __init init_f2fs_fs(void)
 	err = f2fs_init_post_read_processing();
 	if (err)
 		goto free_root_stats;
+	err = f2fs_init_bio_entry_cache();
+	if (err)
+		goto free_post_read;
 	return 0;
 
+free_post_read:
+	f2fs_destroy_post_read_processing();
 free_root_stats:
 	f2fs_destroy_root_stats();
 	unregister_filesystem(&f2fs_fs_type);
@@ -3652,6 +3834,7 @@ fail:
 
 static void __exit exit_f2fs_fs(void)
 {
+	f2fs_destroy_bio_entry_cache();
 	f2fs_destroy_post_read_processing();
 	f2fs_destroy_root_stats();
 	unregister_filesystem(&f2fs_fs_type);
