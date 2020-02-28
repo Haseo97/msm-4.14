@@ -47,7 +47,7 @@ __poll_t vfs_poll(struct file *file, struct poll_table_struct *pt)
 			if (!head)
 				return DEFAULT_POLLMASK;
 			if (IS_ERR(head))
-				return EPOLLERR;
+				return POLLERR;
 			pt->_qproc(file, head, pt);
 		}
 

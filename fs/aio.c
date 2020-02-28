@@ -1721,7 +1721,7 @@ static ssize_t aio_poll(struct aio_kiocb *aiocb, struct iocb *iocb)
 		return -EINVAL;
 
 	INIT_WORK(&req->work, aio_poll_complete_work);
-	req->events = demangle_poll(iocb->aio_buf) | EPOLLERR | EPOLLHUP;
+	req->events = demangle_poll(iocb->aio_buf) | POLLERR | POLLHUP;
 	req->file = fget(iocb->aio_fildes);
 	if (unlikely(!req->file))
 		return -EBADF;
