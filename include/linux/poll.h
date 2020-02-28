@@ -127,7 +127,7 @@ extern int poll_select_set_timeout(struct timespec64 *to, time64_t sec,
 static inline __u16 mangle_poll(__poll_t val)
 {
 	__u16 v = (__force __u16)val;
-#define M(X) __MAP(v, (__force __u16)EPOLL##X, POLL##X)
+#define M(X) __MAP(v, (__force __u16)POLL##X, POLL##X)
 	return M(IN) | M(OUT) | M(PRI) | M(ERR) | M(NVAL) |
 		M(RDNORM) | M(RDBAND) | M(WRNORM) | M(WRBAND) |
 		M(HUP) | M(RDHUP) | M(MSG);
@@ -136,7 +136,7 @@ static inline __u16 mangle_poll(__poll_t val)
 
 static inline __poll_t demangle_poll(u16 val)
 {
-#define M(X) (__force __poll_t)__MAP(val, POLL##X, (__force __u16)EPOLL##X)
+#define M(X) (__force __poll_t)__MAP(val, POLL##X, (__force __u16)POLL##X)
 	return M(IN) | M(OUT) | M(PRI) | M(ERR) | M(NVAL) |
 		M(RDNORM) | M(RDBAND) | M(WRNORM) | M(WRBAND) |
 		M(HUP) | M(RDHUP) | M(MSG);
