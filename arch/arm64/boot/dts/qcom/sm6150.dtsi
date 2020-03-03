@@ -616,6 +616,15 @@
 			size = <0 0x800000>;
 		};
 
+		ramoops_mem: ramoops_region@a1600000 {
+			compatible = "ramoops";
+			reg = <0 0xa1600000 0 0x800000>;
+			console-size = <0x400000>;
+			ftrace-size = <0x40000>;
+			pmsg-size = <0x200000>;
+			ecc-size = <0x0>;
+		};
+
 		sdsp_mem: sdsp_region {
 			compatible = "shared-dma-pool";
 			alloc-ranges = <0 0x00000000 0 0xffffffff>;
@@ -678,6 +687,7 @@
 			size = <0 0x2000000>;
 			linux,cma-default;
 		};
+
 	};
 };
 
